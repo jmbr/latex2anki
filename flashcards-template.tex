@@ -1,0 +1,30 @@
+\RequirePackage{filecontents}
+\begin{filecontents*}{cards.cfg}
+\NeedsTeXFormat{LaTeX2e}[1996/12/01]
+\ProvidesFile{cards.cfg}
+\newcommand{\cardpapermode}{portrait}
+\newcommand{\cardpaper}{letterpaper}
+\newcommand{\cardrows}{1}
+\newcommand{\cardcolumns}{1}
+\setlength{\cardheight}{2.0in}
+\setlength{\cardwidth}{3.5in}
+\setlength{\topoffset}{0.0in}
+\setlength{\oddoffset}{0.0in}
+\setlength{\evenoffset}{0.0in}
+
+\endinput
+\end{filecontents*}
+
+% \documentclass[avery5371,frame]{flashcards}
+\documentclass[cards]{flashcards}
+\geometry{paperwidth=3.6in,paperheight=2.1in,margin=0pt}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+
+\begin{document}
+
+% \begin{flashcard}{}
+% \end{flashcard}
+
+\end{document}

@@ -1,0 +1,122 @@
+#!/usr/bin/env python
+
+import argparse
+try:
+    import argcomplete
+except ImportError:
+    argcomplete = None
+import html
+import json
+import requests
+import sys
+
+from TexSoup import TexSoup
+
+
+DEFAULT_HOST = 'localhost'
+DEFAULT_PORT = 8765
+DEFAULT_VERSION = 5
+DEFAULT_MODEL_NAME = 'Basic'
+
+
+class AnkiConnectError(Exception):
+    """Error in anki-connect request."""
+    pass
+
+
+class AnkiConnect:
+    def __init__(self, host=DEFAULT_HOST, port=DEFAULT_PORT):
+        self.host = host
+        self.port = port
+        self.url = 'http://{}:{}'.format(host, port)
+
+    def send(self, **kwargs):
+        """Send request using the anki-connect protocol."""
+        kwargs.setdefault('version', DEFAULT_VERSION)
+        request = requests.post(self.url, json=kwargs)
+        response = json.loads(request.text)
+        if response['error'] is not None:
+            print('{!r}'.format(response['error']))
+            raise AnkiConnectError(response['error'])
+        return response['result']
+
+    def add_note(self, deck_name, front_text, back_text):
+        """Add a note to a deck."""
+        params = {'note': {'deckName': deck_name,
+                           'modelName': DEFAULT_MODEL_NAME,
+                           'fields': {'Front': front_text, 'Back': back_text}}}
+        return self.send(action='addNote', params=params)
+
+    def update_note_fields(self, note_id, front_text, back_text):
+        """Update fields of a given note."""
+        params = {'note': {'id': note_id,
+                           'fields': {'Front': front_text, 'Back': back_text}}}
+        return self.send(action='updateNoteFields', params=params)
+
+    def find_notes(self, deck_name):
+        """Return all the note IDs of a deck."""
+        params = {'query': 'deck:{}'.format(deck_name)}
+        return self.send(action='findNotes', params=params)
+
+
+def main():
+    parser = argparse.ArgumentParser(description='convert LaTeX flash cards to'
+                                     ' Anki')
+    parser.add_argument('file', metavar='FILE',
+                        type=argparse.FileType('r', encoding='utf-8'),
+                        help='LaTeX file containing the flash cards')
+    parser.add_argument('--host', '-t', required=False, type=str,
+                        default=DEFAULT_HOST, help='address of anki-connect '
+                        'server (default is %(default)s)')
+    parser.add_argument('--port', '-p', required=False, type=int,
+                        default=DEFAULT_PORT, help='port of anki-connect '
+                        'server (default is %(default)s)')
+    parser.add_argument('--deck', '-d', type=str, required=False,
+                        default='Default', help='name of deck where the '
+                        'cards will be imported (default is \'%(default)s\')')
+    parser.add_argument('--verbose', '-v', required=False, default=False,
+                        action='store_true', help='be verbose')
+    parser.add_argument('--upgrade', '-u', required=False, default=False,
+                        action='store_true', help='upgrade if cards already '
+                        'exist')
+
+    if argcomplete:
+        argcomplete.autocomplete(parser)
+
+    args = parser.parse_args(sys.argv[1:])
+
+    ts = TexSoup(args.file)
+    ac = AnkiConnect(args.host, args.port)
+
+    deck_names = ac.send(action='deckNames')
+    if args.deck not in deck_names:
+        print('Deck {!r} not found.'.format(args.deck), file=sys.stderr)
+        sys.exit(-1)
+
+    if args.upgrade:
+        note_ids = ac.find_notes(args.deck)
+        notes_info = ac.send(action='notesInfo', params={'notes': note_ids})
+        notes_dict = {n['fields']['Front']['value']: n for n in notes_info}
+
+    for flashcard in ts.find_all('flashcard'):
+        front_text = html.escape(flashcard.args[0].strip())
+        contents = ''.join(str(c) for c in flashcard.contents)
+        back_text = '[latex]\n{}\n[/latex]\n'.format(html.escape(contents))
+    
+        response = ac.add_note(args.deck, front_text, back_text)
+        if response is None:
+            if args.upgrade is True:
+                note_id = notes_dict[front_text]['noteId']
+                ac.update_note_fields(note_id, front_text, back_text)
+                if args.verbose:
+                    print('upgraded {!r} ({})'.format(flashcard.args[0], note_id))
+            else:
+                if args.verbose:
+                    print('ignored {!r}'.format(flashcard.args[0]))
+        else:
+            print('added {!r} ({})'.format(flashcard.args[0], response),
+                  file=sys.stderr)
+
+
+if __name__ == '__main__':
+    main()

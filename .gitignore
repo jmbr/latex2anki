@@ -1,0 +1,5 @@
+cards.cfg
+flashcards.*
+build
+dist
+latex2anki.egg-info

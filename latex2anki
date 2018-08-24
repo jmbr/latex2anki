@@ -6,6 +6,7 @@ try:
 except ImportError:
     argcomplete = None
 import html
+import logging
 import json
 import requests
 import sys
@@ -36,7 +37,6 @@ class AnkiConnect:
         request = requests.post(self.url, json=kwargs)
         response = json.loads(request.text)
         if response['error'] is not None:
-            print('{!r}'.format(response['error']))
             raise AnkiConnectError(response['error'])
         return response['result']
 
@@ -57,6 +57,79 @@ class AnkiConnect:
         """Return all the note IDs of a deck."""
         params = {'query': 'deck:{}'.format(deck_name)}
         return self.send(action='findNotes', params=params)
+
+    def create_deck(self, deck_name):
+        """Create deck."""
+        params = {'deck': deck_name}
+        return self.send(action='createDeck', params=params)
+
+    def upgrade_anki_connect(self):
+        """Upgrade anki-connect."""
+        return self.send(action='upgrade')
+
+
+class LaTeX2AnkiError(Exception):
+    """Error during LaTeX to Anki conversion."""
+    pass
+
+
+class LaTeX2Anki:
+    def __init__(self, args, log):
+        self.args = args
+        self.log = log
+        self.texsoup = TexSoup(args.file)
+        self.anki_connect = AnkiConnect(args.host, args.port)
+
+    def notes_dict(self, deck):
+        """Construct a dictionary of notes indexed by front text."""
+        note_ids = self.anki_connect.find_notes(deck)
+        notes_info = self.anki_connect.send(action='notesInfo',
+                                            params={'notes': note_ids})
+        print(note_ids)
+        print(notes_info)
+        return {n['fields']['Front']['value']: n for n in notes_info}
+
+    def upgrade(self):
+        self.anki_connect.upgrade()
+
+    def convert(self):
+        """Convert to Anki."""
+        ts = self.texsoup
+        ac = self.anki_connect
+        log = self.log
+        args = self.args
+
+        deck_names = ac.send(action='deckNames')
+        log.debug('Found decks: {}'.format(deck_names))
+
+        if args.deck not in deck_names:
+            ac.create_deck(args.deck)
+            if args.verbose:
+                log.info('Deck {!r} created.'.format(args.deck))
+
+        if args.upgrade:
+            notes_dict = self.notes_dict(args.deck)
+
+        for flashcard in ts.find_all('flashcard'):
+            front_text = html.escape(flashcard.args[0])
+            contents = ''.join(str(c) for c in flashcard.contents)
+            back_text = '[latex]\n{}\n[/latex]\n'.format(html.escape(contents))
+
+            response = ac.add_note(args.deck, front_text, back_text)
+            if response:
+                log.debug('Added {!r} ({})'.format(flashcard.args[0], response))
+            else:
+                if args.upgrade:
+                    try:
+                        note_id = notes_dict[front_text]['noteId']
+                        ac.update_note_fields(note_id, front_text, back_text)
+                        log.debug('Upgraded {!r} ({})'
+                                  .format(flashcard.args[0], note_id))
+                    except KeyError:
+                        log.error('Unable to find {!r}.'
+                                  .format(flashcard.args[0]))
+                else:
+                    log.debug('Ignored {!r}'.format(flashcard.args[0]))
 
 
 def main():
@@ -79,43 +152,22 @@ def main():
     parser.add_argument('--upgrade', '-u', required=False, default=False,
                         action='store_true', help='upgrade if cards already '
                         'exist')
+    parser.add_argument('--upgrade-anki-connect', required=False, default=False,
+                        action='store_true', help='upgrade anki-connect within Anki')
 
     if argcomplete:
         argcomplete.autocomplete(parser)
 
     args = parser.parse_args(sys.argv[1:])
 
-    ts = TexSoup(args.file)
-    ac = AnkiConnect(args.host, args.port)
+    logging.basicConfig(format='%(message)s')
+    log = logging.getLogger(name='latex2anki')
+    log.setLevel(logging.DEBUG if args.verbose else logging.INFO)
 
-    deck_names = ac.send(action='deckNames')
-    if args.deck not in deck_names:
-        print('Deck {!r} not found.'.format(args.deck), file=sys.stderr)
-        sys.exit(-1)
-
-    if args.upgrade:
-        note_ids = ac.find_notes(args.deck)
-        notes_info = ac.send(action='notesInfo', params={'notes': note_ids})
-        notes_dict = {n['fields']['Front']['value']: n for n in notes_info}
-
-    for flashcard in ts.find_all('flashcard'):
-        front_text = html.escape(flashcard.args[0].strip())
-        contents = ''.join(str(c) for c in flashcard.contents)
-        back_text = '[latex]\n{}\n[/latex]\n'.format(html.escape(contents))
-    
-        response = ac.add_note(args.deck, front_text, back_text)
-        if response is None:
-            if args.upgrade is True:
-                note_id = notes_dict[front_text]['noteId']
-                ac.update_note_fields(note_id, front_text, back_text)
-                if args.verbose:
-                    print('upgraded {!r} ({})'.format(flashcard.args[0], note_id))
-            else:
-                if args.verbose:
-                    print('ignored {!r}'.format(flashcard.args[0]))
-        else:
-            print('added {!r} ({})'.format(flashcard.args[0], response),
-                  file=sys.stderr)
+    l2a = LaTeX2Anki(args, log)
+    if args.upgrade_anki_connect:
+        l2a.anki_connect.upgrade_anki_connect()
+    l2a.convert()
 
 
 if __name__ == '__main__':

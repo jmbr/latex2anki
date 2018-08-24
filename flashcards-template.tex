@@ -22,6 +22,11 @@
 \usepackage{amssymb}
 \usepackage{amsthm}
 
+\makeatletter
+\renewcommand{\flashcards@ps@back@begin@plain}
+{\vspace*{\fill}\flashcards@format@back}
+\makeatother
+
 \begin{document}
 
 % \begin{flashcard}{}

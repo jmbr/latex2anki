@@ -16,7 +16,7 @@ from TexSoup import TexSoup
 
 DEFAULT_HOST = 'localhost'
 DEFAULT_PORT = 8765
-DEFAULT_VERSION = 5
+DEFAULT_VERSION = 6
 DEFAULT_MODEL_NAME = 'Basic'
 
 
@@ -40,11 +40,12 @@ class AnkiConnect:
             raise AnkiConnectError(response['error'])
         return response['result']
 
-    def add_note(self, deck_name, front_text, back_text):
+    def add_note(self, deck_name, front_text, back_text, tags=[]):
         """Add a note to a deck."""
         params = {'note': {'deckName': deck_name,
                            'modelName': DEFAULT_MODEL_NAME,
-                           'fields': {'Front': front_text, 'Back': back_text}}}
+                           'fields': {'Front': front_text, 'Back': back_text},
+                           'tags': tags}}
         return self.send(action='addNote', params=params)
 
     def update_note_fields(self, note_id, front_text, back_text):
@@ -85,8 +86,8 @@ class LaTeX2Anki:
         note_ids = self.anki_connect.find_notes(deck)
         notes_info = self.anki_connect.send(action='notesInfo',
                                             params={'notes': note_ids})
-        print(note_ids)
-        print(notes_info)
+        # print(note_ids)
+        # print(notes_info)
         return {n['fields']['Front']['value']: n for n in notes_info}
 
     def upgrade(self):

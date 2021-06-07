@@ -112,7 +112,7 @@ class LaTeX2Anki:
             notes_dict = self.notes_dict(args.deck)
 
         for flashcard in ts.find_all('flashcard'):
-            front_text = html.escape(flashcard.args[0])
+            front_text = html.escape(flashcard.args[0].string)
             contents = ''.join(str(c) for c in flashcard.contents)
             back_text = '[latex]\n{}\n[/latex]\n'.format(html.escape(contents))
 

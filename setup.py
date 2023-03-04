@@ -8,5 +8,5 @@ setup(name='latex2anki',
       author='Juan M. Bello-Rivas',
       author_email='jmbr@superadditive.com',
       url='https://github.com/jmbr/latex2anki',
-      install_requires=['texsoup'],
+      install_requires=['texsoup', 'requests'],
       scripts=['latex2anki'])
